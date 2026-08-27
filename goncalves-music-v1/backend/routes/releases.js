@@ -1,7 +1,19 @@
+```javascript
 "use strict";
 
 import { createClient } from "@supabase/supabase-js";
-import Busboy from "busboy";
+import formidable from "formidable";
+import fs from "fs/promises";
+
+/*
+ * =========================================================
+ * GONÇALVES MUSIC
+ * API /api/releases
+ *
+ * GET  -> lista lançamentos
+ * POST -> cria lançamento
+ * =========================================================
+ */
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -14,741 +26,1461 @@ const supabase = createClient(
   }
 );
 
-const MAX_AUDIO_SIZE = 500 * 1024 * 1024;
-const MAX_COVER_SIZE = 20 * 1024 * 1024;
 
-const AUDIO_EXTENSIONS = [".wav", ".flac", ".mp3"];
-const COVER_EXTENSIONS = [".jpg", ".jpeg", ".png"];
+/*
+ * =========================================================
+ * VERCEL
+ * =========================================================
+ *
+ * Desativa o parser padrão para podermos receber
+ * multipart/form-data com áudio + capa.
+ */
 
-function extension(filename = "") {
-  const name = filename.toLowerCase();
-  const position = name.lastIndexOf(".");
-  return position >= 0 ? name.slice(position) : "";
+export const config = {
+  api: {
+    bodyParser: false
+  }
+};
+
+
+/*
+ * =========================================================
+ * HELPERS
+ * =========================================================
+ */
+
+function first(value) {
+
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value;
 }
 
-function slugify(value = "") {
-  return String(value)
+
+function text(value) {
+
+  return String(
+    first(value) || ""
+  ).trim();
+}
+
+
+function booleanValue(value) {
+
+  const valueText =
+    text(value).toLowerCase();
+
+  return (
+    value === true ||
+    valueText === "true" ||
+    valueText === "1" ||
+    valueText === "on" ||
+    valueText === "yes"
+  );
+}
+
+
+function safeFileName(name) {
+
+  return String(name || "arquivo")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-");
 }
 
-function createCatalogNumber() {
-  const now = new Date();
 
-  const year = now.getFullYear();
+function extension(fileName) {
 
-  const random = Math.floor(
-    1000 + Math.random() * 9000
-  );
+  const parts =
+    String(fileName || "")
+      .toLowerCase()
+      .split(".");
 
-  return `GM-${year}-${random}`;
+  return parts.length > 1
+    ? parts.pop()
+    : "";
 }
 
-function parseJson(value) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
+
+function getFile(file) {
+
+  if (Array.isArray(file)) {
+    return file[0];
   }
+
+  return file;
 }
 
-function readMultipart(req) {
-  return new Promise((resolve, reject) => {
 
-    const fields = {};
-    const files = {};
+/*
+ * =========================================================
+ * PARSER MULTIPART
+ * =========================================================
+ */
 
-    const bb = Busboy({
-      headers: req.headers,
-      limits: {
-        files: 2,
-        fileSize: MAX_AUDIO_SIZE
-      }
-    });
+async function parseMultipart(req) {
 
-    bb.on("field", (name, value) => {
-      fields[name] = value;
-    });
-
-    bb.on(
-      "file",
-      (fieldname, file, info) => {
-
-        const chunks = [];
-        let size = 0;
-
-        file.on("data", (chunk) => {
-
-          size += chunk.length;
-
-          if (
-            fieldname === "audio" &&
-            size > MAX_AUDIO_SIZE
-          ) {
-            file.destroy(
-              new Error(
-                "O arquivo de áudio excede 500 MB."
-              )
-            );
-
-            return;
-          }
-
-          if (
-            fieldname === "cover" &&
-            size > MAX_COVER_SIZE
-          ) {
-            file.destroy(
-              new Error(
-                "A capa excede 20 MB."
-              )
-            );
-
-            return;
-          }
-
-          chunks.push(chunk);
-        });
-
-        file.on("end", () => {
-
-          files[fieldname] = {
-            buffer: Buffer.concat(chunks),
-            filename: info.filename,
-            mimeType: info.mimeType,
-            size
-          };
-
-        });
-
-        file.on("error", reject);
-      }
-    );
-
-    bb.on("error", reject);
-
-    bb.on("finish", () => {
-
-      resolve({
-        fields,
-        files
-      });
-
-    });
-
-    req.pipe(bb);
+  const form = formidable({
+    multiples: false,
+    keepExtensions: true,
+    maxFileSize:
+      300 * 1024 * 1024
   });
-}
 
-async function uploadFile(
-  bucket,
-  path,
-  file,
-  contentType
-) {
 
-  const { error } =
-    await supabase.storage
-      .from(bucket)
-      .upload(
-        path,
-        file.buffer,
-        {
-          contentType,
-          upsert: false
+  return new Promise(
+    (resolve, reject) => {
+
+      form.parse(
+        req,
+        (error, fields, files) => {
+
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve({
+            fields,
+            files
+          });
+
         }
       );
 
-  if (error) {
-    throw new Error(
-      `Erro no upload: ${error.message}`
-    );
-  }
-
-  const {
-    data
-  } =
-    supabase.storage
-      .from(bucket)
-      .getPublicUrl(path);
-
-  return {
-    path,
-    url: data.publicUrl
-  };
+    }
+  );
 }
 
-export default async function handler(req, res) {
 
-  if (req.method !== "POST") {
+/*
+ * =========================================================
+ * ARTISTA
+ * =========================================================
+ */
 
-    return res.status(405).json({
-      error: "Método não permitido."
-    });
+async function findArtist(artistName) {
+
+  const name =
+    text(artistName);
+
+
+  if (!name) {
+
+    return {
+      error:
+        "Informe o artista principal."
+    };
+
   }
 
-  let parsed;
 
-  try {
+  /*
+   * Primeiro tenta nome artístico exato.
+   */
 
-    parsed =
-      await readMultipart(req);
+  const {
+    data,
+    error
+  } = await supabase
+    .from("artists")
+    .select(`
+      id,
+      nome_artistico,
+      status
+    `)
+    .ilike(
+      "nome_artistico",
+      name
+    )
+    .limit(10);
 
-  } catch (error) {
+
+  if (error) {
 
     console.error(
-      "Multipart error:",
+      "Erro ao localizar artista:",
       error
     );
 
-    return res.status(400).json({
+    return {
       error:
-        error.message ||
-        "Não foi possível processar os arquivos."
-    });
+        `Erro ao localizar artista: ${error.message}`
+    };
+
   }
 
-  const {
-    fields,
-    files
-  } = parsed;
 
-  /* =========================================
-     METADADOS
-     ========================================= */
+  if (!data || data.length === 0) {
 
-  const release =
-    parseJson(fields.release);
-
-  if (!release) {
-
-    return res.status(400).json({
+    return {
       error:
-        "Dados do lançamento inválidos."
-    });
+        `Artista "${name}" não encontrado. Cadastre o artista antes de criar o lançamento.`
+    };
+
   }
 
-  const title =
-    release.titles?.[0]?.text?.trim();
 
-  const artistName =
-    String(
-      fields.artist_name ||
-      release.artist_name ||
-      ""
-    ).trim();
+  if (data.length > 1) {
 
-  const genre =
-    String(
-      release.primary_genre ||
-      ""
-    ).trim();
-
-  const contentType =
-    String(
-      release.content_type ||
-      "Single"
-    ).trim();
-
-  const releaseDate =
-    String(
-      release.original_release_date ||
-      ""
-    ).trim();
-
-  const description =
-    release.descriptions?.[0]?.text ||
-    "";
-
-  const explicit =
-    Boolean(release.explicit);
-
-  const aiDisclosure =
-    Boolean(release.ai_disclosure);
-
-  let catalogNumber =
-    String(
-      release.catalog_number ||
-      ""
-    ).trim();
-
-  /* =========================================
-     VALIDAÇÕES
-     ========================================= */
-
-  if (!title) {
-
-    return res.status(400).json({
+    return {
       error:
-        "O título da música é obrigatório."
-    });
+        `Existem vários artistas com o nome "${name}". Use um nome artístico único.`
+    };
+
   }
 
-  if (!artistName) {
 
-    return res.status(400).json({
-      error:
-        "O artista principal é obrigatório."
-    });
-  }
+  const artist =
+    data[0];
 
-  if (!genre) {
-
-    return res.status(400).json({
-      error:
-        "O gênero musical é obrigatório."
-    });
-  }
-
-  if (!releaseDate) {
-
-    return res.status(400).json({
-      error:
-        "A data de lançamento é obrigatória."
-    });
-  }
-
-  if (!files.audio) {
-
-    return res.status(400).json({
-      error:
-        "O arquivo de áudio é obrigatório."
-    });
-  }
-
-  if (!files.cover) {
-
-    return res.status(400).json({
-      error:
-        "A capa é obrigatória."
-    });
-  }
-
-  /* =========================================
-     VALIDA ÁUDIO
-     ========================================= */
-
-  const audio =
-    files.audio;
-
-  const audioExtension =
-    extension(audio.filename);
 
   if (
-    !AUDIO_EXTENSIONS.includes(
-      audioExtension
-    )
+    artist.status &&
+    artist.status !== "active"
   ) {
 
-    return res.status(400).json({
+    return {
       error:
-        "Formato de áudio inválido. Use WAV, FLAC ou MP3."
-    });
+        "O artista encontrado não está ativo."
+    };
+
   }
 
-  if (
-    audio.size >
-    MAX_AUDIO_SIZE
-  ) {
 
-    return res.status(400).json({
-      error:
-        "O áudio ultrapassa o limite de 500 MB."
-    });
+  return {
+    artist
+  };
+}
+
+
+/*
+ * =========================================================
+ * STORAGE
+ * =========================================================
+ */
+
+async function uploadFile(
+  file,
+  folder,
+  contentType
+) {
+
+  if (!file) {
+    return null;
   }
 
-  /* =========================================
-     VALIDA CAPA
-     ========================================= */
 
-  const cover =
-    files.cover;
+  const bucket =
+    process.env.RELEASES_BUCKET ||
+    "releases";
 
-  const coverExtension =
-    extension(cover.filename);
 
-  if (
-    !COVER_EXTENSIONS.includes(
-      coverExtension
-    )
-  ) {
-
-    return res.status(400).json({
-      error:
-        "Formato de capa inválido. Use JPG ou PNG."
-    });
-  }
-
-  if (
-    cover.size >
-    MAX_COVER_SIZE
-  ) {
-
-    return res.status(400).json({
-      error:
-        "A capa ultrapassa o limite de 20 MB."
-    });
-  }
-
-  /* =========================================
-     ARTISTA
-     ========================================= */
-
-  let artistId = null;
-
-  const {
-    data: existingArtist,
-    error: artistSearchError
-  } =
-    await supabase
-      .from("artists")
-      .select("id,nome,name")
-      .ilike("nome", artistName)
-      .limit(1)
-      .maybeSingle();
-
-  if (
-    artistSearchError &&
-    artistSearchError.code !== "PGRST116"
-  ) {
-
-    console.error(
-      artistSearchError
+  const originalName =
+    safeFileName(
+      file.originalFilename ||
+      file.newFilename ||
+      "arquivo"
     );
+
+
+  const filePath =
+    `${folder}/${Date.now()}-${originalName}`;
+
+
+  const buffer =
+    await fs.readFile(
+      file.filepath
+    );
+
+
+  const {
+    error
+  } = await supabase
+    .storage
+    .from(bucket)
+    .upload(
+      filePath,
+      buffer,
+      {
+        contentType:
+          contentType ||
+          file.mimetype ||
+          "application/octet-stream",
+
+        upsert: false
+      }
+    );
+
+
+  if (error) {
+
+    throw new Error(
+      `Erro ao enviar arquivo para o Storage: ${error.message}`
+    );
+
   }
 
-  if (existingArtist) {
 
-    artistId =
-      existingArtist.id;
+  const {
+    data
+  } = supabase
+    .storage
+    .from(bucket)
+    .getPublicUrl(
+      filePath
+    );
 
-  } else {
 
-    /*
-     * Se sua tabela artists usa "name"
-     * em vez de "nome", alteraremos aqui
-     * conforme o schema definitivo.
-     */
+  return {
+    bucket,
+    path: filePath,
+    url:
+      data?.publicUrl || null
+  };
+}
 
-    const {
-      data: newArtist,
-      error: artistError
-    } =
-      await supabase
-        .from("artists")
-        .insert({
-          nome: artistName
-        })
-        .select("id")
-        .single();
 
-    if (artistError) {
+/*
+ * =========================================================
+ * VALIDAÇÃO DOS ARQUIVOS
+ * =========================================================
+ */
 
-      return res.status(500).json({
-        error:
-          `Não foi possível criar o artista: ${artistError.message}`
-      });
-    }
+function validateFiles(
+  audio,
+  cover
+) {
 
-    artistId =
-      newArtist.id;
+  if (!audio) {
+
+    return "Selecione o arquivo de áudio.";
+
   }
 
-  /* =========================================
-     CATÁLOGO
-     ========================================= */
 
-  if (!catalogNumber) {
+  if (!cover) {
 
-    catalogNumber =
-      createCatalogNumber();
+    return "Selecione a capa do lançamento.";
+
   }
 
-  /* =========================================
-     ID DO LANÇAMENTO
-     ========================================= */
 
-  const releaseSlug =
-    slugify(title);
+  const audioExt =
+    extension(
+      audio.originalFilename
+    );
 
-  const timestamp =
-    Date.now();
 
-  const audioPath =
-    `${artistId}/${releaseSlug}-${timestamp}${audioExtension}`;
+  const coverExt =
+    extension(
+      cover.originalFilename
+    );
 
-  const coverPath =
-    `${artistId}/${releaseSlug}-${timestamp}${coverExtension}`;
 
-  /* =========================================
-     UPLOAD DO ÁUDIO
-     ========================================= */
+  const validAudio = [
+    "wav",
+    "flac",
+    "mp3"
+  ];
 
-  let audioUpload;
 
-  try {
+  const validCover = [
+    "jpg",
+    "jpeg",
+    "png"
+  ];
 
-    audioUpload =
-      await uploadFile(
-        "music-audio",
-        audioPath,
-        audio,
-        audio.mimeType ||
-        "application/octet-stream"
+
+  if (
+    !validAudio.includes(
+      audioExt
+    )
+  ) {
+
+    return:
+      "O áudio deve estar em WAV, FLAC ou MP3.";
+
+  }
+
+
+  if (
+    !validCover.includes(
+      coverExt
+    )
+  ) {
+
+    return:
+      "A capa deve estar em JPG, JPEG ou PNG.";
+
+  }
+
+
+  return null;
+}
+
+
+/*
+ * =========================================================
+ * GET
+ * =========================================================
+ */
+
+async function getReleases(req, res) {
+
+  const {
+    id,
+    status,
+    per_page,
+    limit
+  } = req.query || {};
+
+
+  let pageSize =
+    parseInt(
+      per_page ||
+      limit ||
+      "50",
+      10
+    );
+
+
+  if (
+    Number.isNaN(pageSize) ||
+    pageSize <= 0
+  ) {
+
+    pageSize = 50;
+
+  }
+
+
+  if (pageSize > 100) {
+    pageSize = 100;
+  }
+
+
+  let query =
+    supabase
+      .from("releases")
+      .select(`
+        id,
+        artist_id,
+        titulo,
+        subtitulo,
+        tipo,
+        genero,
+        genero_secundario,
+        idioma,
+        label,
+        catalog_number,
+        upc,
+        ean,
+        data_lancamento,
+        data_original,
+        capa_url,
+        explicito,
+        declaracao_ia,
+        copyright_text,
+        phonographic_copyright,
+        descricao,
+        status,
+        motivo_rejeicao,
+        labelgrid_release_id,
+        validation_status,
+        validation_result,
+        distribution_status,
+        distribution_result,
+        criado_em,
+        atualizado_em
+      `)
+      .order(
+        "criado_em",
+        {
+          ascending: false
+        }
+      )
+      .limit(pageSize);
+
+
+  if (id) {
+
+    query =
+      query.eq(
+        "id",
+        id
       );
 
-  } catch (error) {
+  }
+
+
+  if (status) {
+
+    query =
+      query.eq(
+        "status",
+        status
+      );
+
+  }
+
+
+  const {
+    data,
+    error
+  } =
+    await query;
+
+
+  if (error) {
 
     console.error(
-      "Audio upload:",
+      "Erro ao buscar releases:",
       error
     );
 
     return res.status(500).json({
+
+      success: false,
+
       error:
-        error.message
+        `Erro ao buscar releases: ${error.message}`
+
     });
+
   }
 
-  /* =========================================
-     UPLOAD DA CAPA
-     ========================================= */
 
-  let coverUpload;
+  /*
+   * Busca os artistas correspondentes.
+   */
+
+  const artistIds =
+    [
+      ...new Set(
+        (data || [])
+          .map(
+            release =>
+              release.artist_id
+          )
+          .filter(Boolean)
+      )
+    ];
+
+
+  let artists = [];
+
+
+  if (artistIds.length) {
+
+    const {
+      data: artistData,
+      error: artistError
+    } =
+      await supabase
+        .from("artists")
+        .select(`
+          id,
+          nome_artistico
+        `)
+        .in(
+          "id",
+          artistIds
+        );
+
+
+    if (artistError) {
+
+      console.error(
+        "Erro ao buscar artistas:",
+        artistError
+      );
+
+    } else {
+
+      artists =
+        artistData || [];
+
+    }
+
+  }
+
+
+  const artistMap =
+    new Map(
+      artists.map(
+        artist => [
+          artist.id,
+          artist
+        ]
+      )
+    );
+
+
+  /*
+   * Formato amigável para o frontend.
+   */
+
+  const releases =
+    (data || []).map(
+      release => {
+
+        const artist =
+          artistMap.get(
+            release.artist_id
+          );
+
+
+        return {
+
+          ...release,
+
+          title:
+            release.titulo,
+
+          artist_name:
+            artist?.nome_artistico ||
+            "Artista",
+
+          artists:
+            artist
+              ? {
+                  name:
+                    artist.nome_artistico
+                }
+              : null
+
+        };
+
+      }
+    );
+
+
+  if (id) {
+
+    if (!releases.length) {
+
+      return res.status(404).json({
+
+        success: false,
+
+        error:
+          "Release não encontrado."
+
+      });
+
+    }
+
+
+    return res.status(200).json({
+
+      success: true,
+
+      data:
+        releases[0]
+
+    });
+
+  }
+
+
+  return res.status(200).json({
+
+    success: true,
+
+    count:
+      releases.length,
+
+    data:
+      releases
+
+  });
+
+}
+
+
+/*
+ * =========================================================
+ * POST
+ * =========================================================
+ */
+
+async function createRelease(
+  req,
+  res
+) {
+
+  const {
+    fields,
+    files
+  } =
+    await parseMultipart(req);
+
+
+  /*
+   * Campos enviados pelo app.js
+   */
+
+  let releasePayload;
+
+
+  try {
+
+    releasePayload =
+      JSON.parse(
+        text(
+          fields.release
+        )
+      );
+
+  } catch (error) {
+
+    return res.status(400).json({
+
+      success: false,
+
+      error:
+        "O campo release não contém um JSON válido."
+
+    });
+
+  }
+
+
+  /*
+   * Dados principais
+   */
+
+  const title =
+    text(
+      releasePayload
+        .titles?.[0]?.text
+    );
+
+
+  const description =
+    text(
+      releasePayload
+        .descriptions?.[0]?.text
+    );
+
+
+  const artistName =
+    text(
+      releasePayload.artist_name
+    );
+
+
+  const contentType =
+    text(
+      releasePayload.content_type
+    ) ||
+    "Single";
+
+
+  const genre =
+    text(
+      releasePayload.primary_genre
+    );
+
+
+  const releaseDate =
+    text(
+      releasePayload.original_release_date
+    );
+
+
+  const catalog =
+    text(
+      releasePayload.catalog_number
+    );
+
+
+  const explicit =
+    Boolean(
+      releasePayload.explicit
+    );
+
+
+  const aiDisclosure =
+    Boolean(
+      releasePayload.ai_disclosure
+    );
+
+
+  const platformIds =
+    Array.isArray(
+      releasePayload.platform_ids
+    )
+      ? [
+          ...new Set(
+            releasePayload.platform_ids
+              .map(
+                value =>
+                  text(value)
+              )
+              .filter(Boolean)
+          )
+        ]
+      : [];
+
+
+  /*
+   * Validação
+   */
+
+  if (!title) {
+
+    return res.status(400).json({
+
+      success: false,
+
+      error:
+        "Informe o título da música."
+
+    });
+
+  }
+
+
+  if (!artistName) {
+
+    return res.status(400).json({
+
+      success: false,
+
+      error:
+        "Informe o artista principal."
+
+    });
+
+  }
+
+
+  if (!genre) {
+
+    return res.status(400).json({
+
+      success: false,
+
+      error:
+        "Informe o gênero musical."
+
+    });
+
+  }
+
+
+  if (!releaseDate) {
+
+    return res.status(400).json({
+
+      success: false,
+
+      error:
+        "Informe a data de lançamento."
+
+    });
+
+  }
+
+
+  if (!platformIds.length) {
+
+    return res.status(400).json({
+
+      success: false,
+
+      error:
+        "Selecione pelo menos uma plataforma."
+
+    });
+
+  }
+
+
+  /*
+   * Arquivos
+   */
+
+  const audio =
+    getFile(
+      files.audio
+    );
+
+
+  const cover =
+    getFile(
+      files.cover
+    );
+
+
+  const fileError =
+    validateFiles(
+      audio,
+      cover
+    );
+
+
+  if (fileError) {
+
+    return res.status(400).json({
+
+      success: false,
+
+      error:
+        fileError
+
+    });
+
+  }
+
+
+  /*
+   * Localiza artista
+   */
+
+  const artistResult =
+    await findArtist(
+      artistName
+    );
+
+
+  if (artistResult.error) {
+
+    return res.status(400).json({
+
+      success: false,
+
+      error:
+        artistResult.error
+
+    });
+
+  }
+
+
+  const artist =
+    artistResult.artist;
+
+
+  /*
+   * Confirma plataformas existentes
+   */
+
+  const {
+    data: platforms,
+    error: platformsError
+  } =
+    await supabase
+      .from("platforms")
+      .select(`
+        id,
+        nome,
+        slug,
+        ativo
+      `)
+      .in(
+        "id",
+        platformIds
+      );
+
+
+  if (platformsError) {
+
+    return res.status(500).json({
+
+      success: false,
+
+      error:
+        `Erro ao validar plataformas: ${platformsError.message}`
+
+    });
+
+  }
+
+
+  const activePlatforms =
+    (platforms || [])
+      .filter(
+        platform =>
+          platform.ativo === true
+      );
+
+
+  if (
+    activePlatforms.length !==
+    platformIds.length
+  ) {
+
+    return res.status(400).json({
+
+      success: false,
+
+      error:
+        "Uma ou mais plataformas selecionadas não existem ou estão inativas."
+
+    });
+
+  }
+
+
+  /*
+   * =======================================================
+   * CRIA O RELEASE
+   * =======================================================
+   */
+
+  const releaseInsert = {
+
+    artist_id:
+      artist.id,
+
+    titulo:
+      title,
+
+    subtitulo:
+      null,
+
+    tipo:
+      contentType.toLowerCase(),
+
+    genero:
+      genre,
+
+    genero_secundario:
+      null,
+
+    idioma:
+      "pt-BR",
+
+    label:
+      "Gonçalves Music",
+
+    catalog_number:
+      catalog || null,
+
+    data_lancamento:
+      releaseDate,
+
+    data_original:
+      releaseDate,
+
+    explicito:
+      explicit,
+
+    declaracao_ia:
+      aiDisclosure,
+
+    descricao:
+      description || null,
+
+    status:
+      "draft",
+
+    validation_status:
+      "pending",
+
+    distribution_status:
+      "pending"
+
+  };
+
+
+  const {
+    data: release,
+    error: releaseError
+  } =
+    await supabase
+      .from("releases")
+      .insert(
+        releaseInsert
+      )
+      .select()
+      .single();
+
+
+  if (releaseError) {
+
+    console.error(
+      "Erro ao criar release:",
+      releaseError
+    );
+
+    return res.status(500).json({
+
+      success: false,
+
+      error:
+        `Erro ao criar lançamento: ${releaseError.message}`
+
+    });
+
+  }
+
+
+  /*
+   * =======================================================
+   * UPLOAD DA CAPA
+   * =======================================================
+   */
+
+  let coverUpload =
+    null;
+
 
   try {
 
     coverUpload =
       await uploadFile(
-        "music-covers",
-        coverPath,
         cover,
-        cover.mimeType ||
-        "image/jpeg"
+        `releases/${release.id}/cover`,
+        cover.mimetype ||
+          "image/jpeg"
+      );
+
+
+  } catch (error) {
+
+    /*
+     * Se a capa falhar, remove o release
+     * para evitar registro incompleto.
+     */
+
+    await supabase
+      .from("releases")
+      .delete()
+      .eq(
+        "id",
+        release.id
+      );
+
+
+    return res.status(500).json({
+
+      success: false,
+
+      error:
+        error.message ||
+        "Erro ao enviar a capa."
+
+    });
+
+  }
+
+
+  /*
+   * Atualiza URL da capa.
+   */
+
+  let updatedRelease =
+    release;
+
+
+  if (coverUpload?.url) {
+
+    const {
+      data,
+      error
+    } =
+      await supabase
+        .from("releases")
+        .update({
+          capa_url:
+            coverUpload.url
+        })
+        .eq(
+          "id",
+          release.id
+        )
+        .select()
+        .single();
+
+
+    if (error) {
+
+      console.error(
+        "Erro ao atualizar capa:",
+        error
+      );
+
+    } else {
+
+      updatedRelease =
+        data;
+
+    }
+
+  }
+
+
+  /*
+   * =======================================================
+   * RELACIONAMENTO COM PLATAFORMAS
+   * =======================================================
+   */
+
+  const platformRows =
+    activePlatforms.map(
+      platform => ({
+
+        release_id:
+          release.id,
+
+        platform_id:
+          platform.id,
+
+        status:
+          "pending"
+
+      })
+    );
+
+
+  const {
+    data: releasePlatforms,
+    error: releasePlatformsError
+  } =
+    await supabase
+      .from("release_platforms")
+      .insert(
+        platformRows
+      )
+      .select();
+
+
+  if (releasePlatformsError) {
+
+    console.error(
+      "Erro ao criar plataformas do release:",
+      releasePlatformsError
+    );
+
+
+    /*
+     * Não apagamos automaticamente o release
+     * porque a capa já foi enviada.
+     *
+     * O release fica registrado para correção.
+     */
+
+    return res.status(500).json({
+
+      success: false,
+
+      error:
+        `Lançamento criado, mas ocorreu um erro ao registrar as plataformas: ${releasePlatformsError.message}`,
+
+      id:
+        release.id,
+
+      release:
+        updatedRelease
+
+    });
+
+  }
+
+
+  /*
+   * =======================================================
+   * UPLOAD DO ÁUDIO
+   * =======================================================
+   *
+   * A tabela releases não possui audio_url.
+   *
+   * Por isso o áudio é enviado ao Storage e a URL
+   * é retornada para a próxima etapa de integração
+   * com a tabela tracks.
+   */
+
+  let audioUpload =
+    null;
+
+
+  try {
+
+    audioUpload =
+      await uploadFile(
+        audio,
+        `releases/${release.id}/audio`,
+        audio.mimetype ||
+          "audio/mpeg"
       );
 
   } catch (error) {
 
-    /*
-     * Se a capa falhar, tenta remover
-     * o áudio que já foi enviado.
-     */
-
-    await supabase.storage
-      .from("music-audio")
-      .remove([
-        audioPath
-      ]);
-
     console.error(
-      "Cover upload:",
+      "Erro ao enviar áudio:",
       error
     );
 
-    return res.status(500).json({
-      error:
-        error.message
-    });
-  }
-
-  /* =========================================
-     CRIA RELEASE
-     ========================================= */
-
-  const releaseData = {
-
-    artist_id:
-      artistId,
-
-    title,
-
-    catalog_number:
-      catalogNumber,
-
-    content_type:
-      contentType,
-
-    description,
-
-    primary_genre:
-      genre,
-
-    original_release_date:
-      releaseDate,
-
-    explicit,
-
-    ai_disclosure:
-      aiDisclosure,
-
-    cover_url:
-      coverUpload.url,
-
-    cover_path:
-      coverUpload.path,
-
-    status:
-      "draft"
-
-  };
-
-  const {
-    data: createdRelease,
-    error: releaseError
-  } =
-    await supabase
-      .from("releases")
-      .insert(releaseData)
-      .select("*")
-      .single();
-
-  if (releaseError) {
 
     /*
-     * Rollback dos arquivos.
+     * O release continua criado porque os metadados,
+     * capa e plataformas já foram gravados.
      */
 
-    await supabase.storage
-      .from("music-audio")
-      .remove([
-        audioPath
-      ]);
-
-    await supabase.storage
-      .from("music-covers")
-      .remove([
-        coverPath
-      ]);
-
-    console.error(
-      "Release database:",
-      releaseError
-    );
-
     return res.status(500).json({
+
+      success: false,
+
       error:
-        `Não foi possível criar o lançamento: ${releaseError.message}`
+        `Lançamento criado, mas não foi possível enviar o áudio: ${error.message}`,
+
+      id:
+        release.id,
+
+      release:
+        updatedRelease,
+
+      platforms:
+        releasePlatforms || []
+
     });
+
   }
 
-  /* =========================================
-     CRIA TRACK
-     ========================================= */
 
-  const trackData = {
-
-    release_id:
-      createdRelease.id,
-
-    title,
-
-    audio_url:
-      audioUpload.url,
-
-    audio_path:
-      audioUpload.path,
-
-    track_number:
-      1
-
-  };
-
-  const {
-    data: createdTrack,
-    error: trackError
-  } =
-    await supabase
-      .from("tracks")
-      .insert(trackData)
-      .select("*")
-      .single();
-
-  if (trackError) {
-
-    /*
-     * Não apagamos o release automaticamente
-     * para preservar o diagnóstico.
-     */
-
-    console.error(
-      "Track error:",
-      trackError
-    );
-
-    return res.status(500).json({
-      error:
-        `Lançamento criado, mas houve erro ao registrar a faixa: ${trackError.message}`,
-      release_id:
-        createdRelease.id
-    });
-  }
-
-  /* =========================================
-     EVENTO
-     ========================================= */
-
-  try {
-
-    await supabase
-      .from("distribution_events")
-      .insert({
-        release_id:
-          createdRelease.id,
-
-        event_type:
-          "release_created",
-
-        status:
-          "success",
-
-        message:
-          "Lançamento criado na Gonçalves Music V1."
-      });
-
-  } catch (error) {
-
-    console.warn(
-      "Não foi possível registrar evento:",
-      error
-    );
-  }
-
-  /* =========================================
-     RESPOSTA
-     ========================================= */
+  /*
+   * =======================================================
+   * RESPOSTA
+   * =======================================================
+   */
 
   return res.status(201).json({
 
     success: true,
 
-    id:
-      createdRelease.id,
+    message:
+      "Lançamento criado com sucesso.",
 
-    public_id:
-      createdRelease.public_id ||
-      createdRelease.id,
+    id:
+      release.id,
 
     release:
-      createdRelease,
+      updatedRelease,
 
-    track:
-      createdTrack,
+    platforms:
+      releasePlatforms || [],
 
     files: {
 
-      audio:
-        audioUpload,
-
       cover:
         coverUpload
-    },
+          ? {
+              url:
+                coverUpload.url,
+              path:
+                coverUpload.path
+            }
+          : null,
 
-    status:
-      createdRelease.status ||
-      "draft"
+      audio:
+        audioUpload
+          ? {
+              url:
+                audioUpload.url,
+              path:
+                audioUpload.path
+            }
+          : null
+
+    }
 
   });
+
 }
+
+
+/*
+ * =========================================================
+ * HANDLER PRINCIPAL
+ * =========================================================
+ */
+
+export default async function handler(
+  req,
+  res
+) {
+
+  res.setHeader(
+    "Cache-Control",
+    "no-store"
+  );
+
+
+  try {
+
+    /*
+     * GET
+     */
+
+    if (req.method === "GET") {
+
+      return await getReleases(
+        req,
+        res
+      );
+
+    }
+
+
+    /*
+     * POST
+     */
+
+    if (req.method === "POST") {
+
+      return await createRelease(
+        req,
+        res
+      );
+
+    }
+
+
+    /*
+     * Outros métodos
+     */
+
+    res.setHeader(
+      "Allow",
+      "GET, POST"
+    );
+
+
+    return res.status(405).json({
+
+      success: false,
+
+      error:
+        "Método não permitido."
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "Releases API:",
+      error
+    );
+
+
+    return res.status(500).json({
+
+      success: false,
+
+      error:
+        error?.message ||
+        "Erro interno da API."
+
+    });
+
+  }
+
+}
+```
