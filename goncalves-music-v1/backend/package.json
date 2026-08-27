@@ -14,3 +14,7 @@
     "multer": "^2.0.2"
   }
 }
+"dependencies": {
+  "@supabase/supabase-js": "^2.0.0",
+  "formidable": "^3.5.4"
+}
