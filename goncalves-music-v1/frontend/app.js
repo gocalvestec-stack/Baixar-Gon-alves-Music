@@ -1237,3 +1237,143 @@ if (
 
   init();
 }
+/* =========================================================
+   PLATAFORMAS
+   ========================================================= */
+
+let availablePlatforms = [];
+
+
+/**
+ * Carrega as plataformas ativas da API.
+ */
+async function loadPlatforms() {
+
+  const container = $("#platforms");
+
+  if (!container) return;
+
+  container.innerHTML =
+    '<div class="empty">Carregando plataformas...</div>';
+
+  try {
+
+    const response =
+      await api("/api/platforms");
+
+    availablePlatforms =
+      Array.isArray(response?.data)
+        ? response.data
+        : [];
+
+    renderPlatforms();
+
+  } catch (error) {
+
+    console.error(
+      "Erro ao carregar plataformas:",
+      error
+    );
+
+    container.innerHTML =
+      `<div class="empty">
+        ${escapeHtml(
+          error.message ||
+          "Não foi possível carregar as plataformas."
+        )}
+      </div>`;
+  }
+}
+
+
+/**
+ * Mostra as plataformas na tela.
+ */
+function renderPlatforms() {
+
+  const container =
+    $("#platforms");
+
+  if (!container) return;
+
+
+  if (!availablePlatforms.length) {
+
+    container.innerHTML =
+      '<div class="empty">Nenhuma plataforma disponível.</div>';
+
+    return;
+  }
+
+
+  container.innerHTML =
+    availablePlatforms.map(platform => {
+
+      const id =
+        String(platform.id);
+
+      const name =
+        platform.nome ||
+        platform.name ||
+        "Plataforma";
+
+      const slug =
+        platform.slug ||
+        "";
+
+
+      return `
+        <label class="platform-card">
+
+          <input
+            type="checkbox"
+            name="platform_ids"
+            value="${escapeHtml(id)}"
+            data-slug="${escapeHtml(slug)}"
+          >
+
+          <span class="platform-content">
+
+            ${
+              platform.logo_url
+                ? `
+                  <img
+                    src="${escapeHtml(platform.logo_url)}"
+                    alt="${escapeHtml(name)}"
+                    class="platform-logo"
+                    loading="lazy"
+                  >
+                `
+                : `
+                  <span class="platform-icon">
+                    🎵
+                  </span>
+                `
+            }
+
+            <span class="platform-name">
+              ${escapeHtml(name)}
+            </span>
+
+          </span>
+
+        </label>
+      `;
+
+    }).join("");
+}
+
+
+/**
+ * Retorna os IDs das plataformas selecionadas.
+ */
+function getSelectedPlatformIds() {
+
+  return Array.from(
+    document.querySelectorAll(
+      'input[name="platform_ids"]:checked'
+    )
+  ).map(
+    input => input.value
+  );
+}
