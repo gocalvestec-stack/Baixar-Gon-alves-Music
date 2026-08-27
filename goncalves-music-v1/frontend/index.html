@@ -2,115 +2,539 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
   <title>Gonçalves Music — Distribuição Digital</title>
-  <meta name="description" content="Gonçalves Music — distribua seus lançamentos digitais.">
+
+  <meta
+    name="description"
+    content="Gonçalves Music — distribua seus lançamentos digitais."
+  >
+
   <link rel="stylesheet" href="/style.css">
 </head>
+
 <body>
+
+  <!-- =====================================================
+       TOPO
+       ===================================================== -->
+
   <header class="topbar">
-    <div class="brand"><span class="brand-mark">G</span> GONÇALVES <b>MUSIC</b></div>
+
+    <div class="brand">
+      <span class="brand-mark">G</span>
+      GONÇALVES <b>MUSIC</b>
+    </div>
+
     <nav>
       <a href="#inicio">Início</a>
       <a href="#como">Como funciona</a>
       <a href="#lancamento">Lançar música</a>
       <a href="#status">Status</a>
     </nav>
+
   </header>
 
+
+  <!-- =====================================================
+       CONTEÚDO
+       ===================================================== -->
+
   <main>
+
+    <!-- ===================================================
+         HERO
+         =================================================== -->
+
     <section id="inicio" class="hero">
+
       <div>
-        <p class="eyebrow">DISTRIBUIÇÃO DIGITAL</p>
-        <h1>Uma música.<br><span>Várias plataformas.</span></h1>
-        <p class="lead">Centralize seus lançamentos em um painel e prepare a entrega para os principais serviços de música.</p>
-        <a class="btn" href="#lancamento">Começar lançamento</a>
+
+        <p class="eyebrow">
+          DISTRIBUIÇÃO DIGITAL
+        </p>
+
+        <h1>
+          Uma música.<br>
+          <span>Várias plataformas.</span>
+        </h1>
+
+        <p class="lead">
+          Centralize seus lançamentos em um painel e
+          prepare a entrega para os principais serviços
+          de música.
+        </p>
+
+        <a
+          class="btn"
+          href="#lancamento"
+        >
+          Começar lançamento
+        </a>
+
       </div>
+
+
       <div class="hero-card">
+
         <div class="pulse"></div>
-        <strong>GONÇALVES MUSIC</strong>
-        <small>Distribuição profissional</small>
+
+        <strong>
+          GONÇALVES MUSIC
+        </strong>
+
+        <small>
+          Distribuição profissional
+        </small>
+
         <div class="platforms">
-          <span>Spotify</span><span>Apple Music</span><span>YouTube Music</span>
-          <span>Deezer</span><span>Amazon Music</span><span>TIDAL</span>
-          <span>TikTok</span><span>Instagram</span>
+
+          <span>Spotify</span>
+          <span>Apple Music</span>
+          <span>YouTube Music</span>
+          <span>Deezer</span>
+          <span>Amazon Music</span>
+          <span>TIDAL</span>
+          <span>TikTok</span>
+          <span>Instagram</span>
+
         </div>
+
       </div>
+
     </section>
 
-    <section id="como" class="section">
-      <p class="eyebrow">FLUXO</p>
-      <h2>Do arquivo à distribuição</h2>
+
+    <!-- ===================================================
+         COMO FUNCIONA
+         =================================================== -->
+
+    <section
+      id="como"
+      class="section"
+    >
+
+      <p class="eyebrow">
+        FLUXO
+      </p>
+
+      <h2>
+        Do arquivo à distribuição
+      </h2>
+
       <div class="steps">
-        <article><b>01</b><h3>Envie</h3><p>Áudio, capa e informações do lançamento.</p></article>
-        <article><b>02</b><h3>Valide</h3><p>O sistema prepara os metadados e verifica o lançamento.</p></article>
-        <article><b>03</b><h3>Distribua</h3><p>Envie o lançamento para a infraestrutura de distribuição conectada.</p></article>
+
+        <article>
+
+          <b>01</b>
+
+          <h3>
+            Envie
+          </h3>
+
+          <p>
+            Áudio, capa e informações do lançamento.
+          </p>
+
+        </article>
+
+
+        <article>
+
+          <b>02</b>
+
+          <h3>
+            Valide
+          </h3>
+
+          <p>
+            O sistema prepara os metadados e verifica
+            o lançamento.
+          </p>
+
+        </article>
+
+
+        <article>
+
+          <b>03</b>
+
+          <h3>
+            Distribua
+          </h3>
+
+          <p>
+            Envie o lançamento para a infraestrutura
+            de distribuição conectada.
+          </p>
+
+        </article>
+
       </div>
+
     </section>
 
-    <section id="lancamento" class="section">
+
+    <!-- ===================================================
+         NOVO LANÇAMENTO
+         =================================================== -->
+
+    <section
+      id="lancamento"
+      class="section"
+    >
+
       <div class="section-head">
+
         <div>
-          <p class="eyebrow">NOVO LANÇAMENTO</p>
-          <h2>Cadastre sua música</h2>
+
+          <p class="eyebrow">
+            NOVO LANÇAMENTO
+          </p>
+
+          <h2>
+            Cadastre sua música
+          </h2>
+
         </div>
-        <span id="apiBadge" class="badge">API verificando...</span>
+
+        <span
+          id="apiBadge"
+          class="badge"
+        >
+          API verificando...
+        </span>
+
       </div>
 
-      <form id="releaseForm" class="form">
+
+      <!-- ===============================================
+           FORMULÁRIO
+           =============================================== -->
+
+      <form
+        id="releaseForm"
+        class="form"
+      >
+
+        <!-- =============================================
+             DADOS PRINCIPAIS
+             ============================================= -->
+
         <div class="grid2">
-          <label>Título da música<input name="title" required placeholder="Ex.: Transformação"></label>
-          <label>Artista principal<input name="artist" required placeholder="Ex.: RD Beatmaker"></label>
-          <label>Tipo
-            <select name="content_type">
-              <option value="Single">Single</option>
-              <option value="EP">EP</option>
-              <option value="Album">Álbum</option>
-            </select>
+
+          <label>
+
+            Título da música
+
+            <input
+              name="title"
+              required
+              placeholder="Ex.: Transformação"
+            >
+
           </label>
-          <label>Gênero<input name="genre" required placeholder="Ex.: Gospel / Trap"></label>
-          <label>Data de lançamento<input type="date" name="release_date" required></label>
-          <label>Catálogo<input name="catalog" required placeholder="GM-001"></label>
+
+
+          <label>
+
+            Artista principal
+
+            <input
+              name="artist"
+              required
+              placeholder="Ex.: RD Beatmaker"
+            >
+
+          </label>
+
+
+          <label>
+
+            Tipo
+
+            <select name="content_type">
+
+              <option value="Single">
+                Single
+              </option>
+
+              <option value="EP">
+                EP
+              </option>
+
+              <option value="Album">
+                Álbum
+              </option>
+
+            </select>
+
+          </label>
+
+
+          <label>
+
+            Gênero
+
+            <input
+              name="genre"
+              required
+              placeholder="Ex.: Gospel / Trap"
+            >
+
+          </label>
+
+
+          <label>
+
+            Data de lançamento
+
+            <input
+              type="date"
+              name="release_date"
+              required
+            >
+
+          </label>
+
+
+          <label>
+
+            Catálogo
+
+            <input
+              name="catalog"
+              required
+              placeholder="GM-001"
+            >
+
+          </label>
+
         </div>
 
-        <label>Descrição
-          <textarea name="description" rows="3" placeholder="Descrição do lançamento"></textarea>
+
+        <!-- =============================================
+             DESCRIÇÃO
+             ============================================= -->
+
+        <label>
+
+          Descrição
+
+          <textarea
+            name="description"
+            rows="3"
+            placeholder="Descrição do lançamento"
+          ></textarea>
+
         </label>
 
+
+        <!-- =============================================
+             ARQUIVOS
+             ============================================= -->
+
         <div class="upload-grid">
-          <label class="upload">🎵 Áudio
-            <input id="audio" type="file" accept=".wav,.flac,.mp3,audio/*">
-            <small id="audioName">WAV/FLAC recomendado</small>
+
+          <label class="upload">
+
+            🎵 Áudio
+
+            <input
+              id="audio"
+              type="file"
+              accept=".wav,.flac,.mp3,audio/*"
+            >
+
+            <small id="audioName">
+              WAV/FLAC recomendado
+            </small>
+
           </label>
-          <label class="upload">🖼️ Capa
-            <input id="cover" type="file" accept="image/jpeg,image/png">
-            <small id="coverName">JPG/PNG</small>
+
+
+          <label class="upload">
+
+            🖼️ Capa
+
+            <input
+              id="cover"
+              type="file"
+              accept="image/jpeg,image/png"
+            >
+
+            <small id="coverName">
+              JPG/PNG
+            </small>
+
           </label>
+
         </div>
+
+
+        <!-- =============================================
+             DECLARAÇÕES
+             ============================================= -->
 
         <div class="checkrow">
-          <label><input type="checkbox" id="explicit"> Conteúdo explícito</label>
-          <label><input type="checkbox" id="aiDisclosure"> Declaro as informações sobre IA quando aplicável</label>
+
+          <label>
+
+            <input
+              type="checkbox"
+              id="explicit"
+            >
+
+            Conteúdo explícito
+
+          </label>
+
+
+          <label>
+
+            <input
+              type="checkbox"
+              id="aiDisclosure"
+            >
+
+            Declaro as informações sobre IA quando aplicável
+
+          </label>
+
         </div>
 
-        <button class="btn" type="submit">Criar lançamento</button>
-        <p id="formMessage" class="message"></p>
+
+        <!-- =============================================
+             PLATAFORMAS
+             ============================================= -->
+
+        <div class="platform-section">
+
+          <div class="section-label">
+            Plataformas de distribuição
+          </div>
+
+
+          <p class="helper">
+            Selecione as plataformas onde deseja
+            disponibilizar este lançamento.
+          </p>
+
+
+          <div
+            id="platforms"
+            class="platform-grid"
+          >
+
+            <div class="empty">
+              Carregando plataformas...
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <!-- =============================================
+             BOTÃO
+             ============================================= -->
+
+        <button
+          class="btn"
+          type="submit"
+        >
+          Criar lançamento
+        </button>
+
+
+        <!-- =============================================
+             MENSAGEM
+             ============================================= -->
+
+        <p
+          id="formMessage"
+          class="message"
+        ></p>
+
       </form>
+
     </section>
 
-    <section id="status" class="section">
+
+    <!-- ===================================================
+         STATUS / CATÁLOGO
+         =================================================== -->
+
+    <section
+      id="status"
+      class="section"
+    >
+
       <div class="section-head">
+
         <div>
-          <p class="eyebrow">CATÁLOGO</p>
-          <h2>Lançamentos</h2>
+
+          <p class="eyebrow">
+            CATÁLOGO
+          </p>
+
+          <h2>
+            Lançamentos
+          </h2>
+
         </div>
-        <button class="btn secondary" id="refresh">Atualizar</button>
+
+
+        <button
+          class="btn secondary"
+          id="refresh"
+          type="button"
+        >
+          Atualizar
+        </button>
+
       </div>
-      <div id="releases" class="release-list"><div class="empty">Carregando...</div></div>
+
+
+      <div
+        id="releases"
+        class="release-list"
+      >
+
+        <div class="empty">
+          Carregando...
+        </div>
+
+      </div>
+
     </section>
+
   </main>
 
-  <footer>© <span id="year"></span> Gonçalves Music</footer>
+
+  <!-- =====================================================
+       RODAPÉ
+       ===================================================== -->
+
+  <footer>
+
+    ©
+    <span id="year"></span>
+    Gonçalves Music
+
+  </footer>
+
+
+  <!-- =====================================================
+       JAVASCRIPT
+       ===================================================== -->
+
   <script src="/app.js"></script>
+
 </body>
 </html>
