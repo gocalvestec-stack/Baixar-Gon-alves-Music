@@ -1,124 +1,46 @@
-/* =========================================================
-   GONÇALVES MUSIC V1
-   app.js
-   Distribuição Digital
-   ========================================================= */
-
 "use strict";
 
 /* =========================================================
-   CONFIGURAÇÃO
+   GONÇALVES MUSIC — APP.JS V1
    ========================================================= */
-
-const API_BASE = "";
-
-const MAX_AUDIO_SIZE = 500 * 1024 * 1024; // 500 MB
-const MAX_COVER_SIZE = 20 * 1024 * 1024;  // 20 MB
-
-const ALLOWED_AUDIO_TYPES = [
-  "audio/wav",
-  "audio/x-wav",
-  "audio/wave",
-  "audio/flac",
-  "audio/mpeg",
-  "audio/mp3"
-];
-
-const ALLOWED_AUDIO_EXTENSIONS = [
-  ".wav",
-  ".flac",
-  ".mp3"
-];
-
-const ALLOWED_COVER_TYPES = [
-  "image/jpeg",
-  "image/png"
-];
-
-const ALLOWED_COVER_EXTENSIONS = [
-  ".jpg",
-  ".jpeg",
-  ".png"
-];
 
 
 /* =========================================================
    HELPERS
    ========================================================= */
 
-const $ = (selector) => document.querySelector(selector);
-
-const $$ = (selector) => document.querySelectorAll(selector);
+function $(selector) {
+  return document.querySelector(selector);
+}
 
 
 function escapeHtml(value) {
+
   return String(value ?? "").replace(
     /[&<>"']/g,
-    (char) => ({
+    char => ({
       "&": "&amp;",
       "<": "&lt;",
       ">": "&gt;",
       '"': "&quot;",
       "'": "&#039;"
-    })[char]
+    }[char])
   );
 }
 
 
-function getExtension(filename) {
-  const name = String(filename || "").toLowerCase();
-  const index = name.lastIndexOf(".");
-
-  return index >= 0
-    ? name.slice(index)
-    : "";
-}
-
-
-function formatBytes(bytes) {
-  if (!bytes) return "0 B";
-
-  const units = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
-}
-
-
-function formatDate(date) {
-  if (!date) return "";
-
-  try {
-    return new Intl.DateTimeFormat("pt-BR").format(
-      new Date(date + "T00:00:00")
-    );
-  } catch {
-    return date;
-  }
-}
-
-
 function setMessage(message, type = "") {
+
   const element = $("#formMessage");
 
   if (!element) return;
 
   element.textContent = message;
-  element.className = `message ${type}`.trim();
-}
 
+  element.className = "message";
 
-function setButtonLoading(button, loading, loadingText = "Processando...") {
-  if (!button) return;
-
-  if (loading) {
-    button.dataset.originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = loadingText;
-  } else {
-    button.disabled = false;
-    button.textContent =
-      button.dataset.originalText || "Criar lançamento";
+  if (type) {
+    element.classList.add(type);
   }
 }
 
@@ -130,75 +52,36 @@ function setButtonLoading(button, loading, loadingText = "Processando...") {
 async function api(url, options = {}) {
 
   const config = {
-    method: options.method || "GET",
-    ...options
+    ...options,
+    headers: {
+      ...(options.body instanceof FormData
+        ? {}
+        : {
+            "Content-Type": "application/json"
+          }),
+
+      ...(options.headers || {})
+    }
   };
 
-  /*
-   * Se o body for FormData NÃO devemos colocar
-   * Content-Type manualmente.
-   *
-   * O navegador adicionará:
-   * multipart/form-data; boundary=...
-   */
 
-  if (!(config.body instanceof FormData)) {
-
-    config.headers = {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    };
-
-  } else {
-
-    config.headers = {
-      Accept: "application/json",
-      ...(options.headers || {})
-    };
-
-  }
+  const response =
+    await fetch(url, config);
 
 
-  const response = await fetch(
-    `${API_BASE}${url}`,
-    config
-  );
-
-
-  const contentType =
-    response.headers.get("content-type") || "";
-
-
-  let data = {};
-
-  if (contentType.includes("application/json")) {
-
-    data = await response
+  const data =
+    await response
       .json()
       .catch(() => ({}));
-
-  } else {
-
-    const text = await response
-      .text()
-      .catch(() => "");
-
-    data = text
-      ? { message: text }
-      : {};
-
-  }
 
 
   if (!response.ok) {
 
-    const errorMessage =
+    throw new Error(
       data.error ||
       data.message ||
-      `Erro HTTP ${response.status}`;
-
-    throw new Error(errorMessage);
+      `Erro HTTP ${response.status}`
+    );
   }
 
 
@@ -212,263 +95,263 @@ async function api(url, options = {}) {
 
 async function health() {
 
-  const badge = $("#apiBadge");
+  const badge =
+    $("#apiBadge");
 
   if (!badge) return;
 
-  badge.textContent = "API verificando...";
-  badge.className = "badge";
+
+  badge.textContent =
+    "API verificando...";
 
 
   try {
 
-    const data = await api("/api/health");
+    const data =
+      await api("/api/health");
 
-    if (data.labelgridConfigured) {
 
-      badge.textContent = "API conectada";
+    if (data.ok) {
+
+      if (data.labelgridConfigured) {
+
+        badge.textContent =
+          "API online • LabelGrid configurada";
+
+      } else {
+
+        badge.textContent =
+          "API online • Token não configurado";
+      }
+
+      badge.classList.add("online");
 
     } else {
 
-      badge.textContent = "API conectada · Token pendente";
+      badge.textContent =
+        data.message ||
+        "API com erro";
+
+      badge.classList.add("error");
     }
-
-
-    badge.classList.add("online");
 
   } catch (error) {
 
-    console.error("Health check:", error);
+    console.error(
+      "Health:",
+      error
+    );
 
-    badge.textContent = "Backend offline";
-    badge.classList.add("offline");
+    badge.textContent =
+      "Backend offline";
+
+    badge.classList.add("error");
   }
 }
 
 
 /* =========================================================
-   VALIDAÇÃO DE ÁUDIO
+   PLATAFORMAS
    ========================================================= */
 
-function validateAudio(file) {
+let availablePlatforms = [];
 
-  if (!file) {
-    return {
-      valid: false,
-      error: "Selecione um arquivo de áudio."
-    };
+
+async function loadPlatforms() {
+
+  const container =
+    $("#platforms");
+
+  if (!container) return;
+
+
+  container.innerHTML =
+    '<div class="empty">Carregando plataformas...</div>';
+
+
+  try {
+
+    const response =
+      await api("/api/platforms");
+
+
+    availablePlatforms =
+      Array.isArray(response?.data)
+        ? response.data
+        : [];
+
+
+    renderPlatforms();
+
+
+  } catch (error) {
+
+    console.error(
+      "Erro ao carregar plataformas:",
+      error
+    );
+
+
+    container.innerHTML =
+      `<div class="empty">
+        ${escapeHtml(
+          error.message ||
+          "Não foi possível carregar as plataformas."
+        )}
+      </div>`;
   }
-
-
-  const extension =
-    getExtension(file.name);
-
-
-  const validType =
-    ALLOWED_AUDIO_TYPES.includes(file.type);
-
-
-  const validExtension =
-    ALLOWED_AUDIO_EXTENSIONS.includes(extension);
-
-
-  if (!validType && !validExtension) {
-
-    return {
-      valid: false,
-      error: "Formato de áudio inválido. Use WAV, FLAC ou MP3."
-    };
-  }
-
-
-  if (file.size > MAX_AUDIO_SIZE) {
-
-    return {
-      valid: false,
-      error:
-        `O áudio é muito grande. ` +
-        `Limite: ${formatBytes(MAX_AUDIO_SIZE)}.`
-    };
-  }
-
-
-  return {
-    valid: true
-  };
 }
 
 
-/* =========================================================
-   VALIDAÇÃO DE CAPA
-   ========================================================= */
+function renderPlatforms() {
 
-function validateCover(file) {
+  const container =
+    $("#platforms");
 
-  if (!file) {
-    return {
-      valid: false,
-      error: "Selecione uma capa."
-    };
-  }
+  if (!container) return;
 
 
-  const extension =
-    getExtension(file.name);
+  if (!availablePlatforms.length) {
 
-
-  const validType =
-    ALLOWED_COVER_TYPES.includes(file.type);
-
-
-  const validExtension =
-    ALLOWED_COVER_EXTENSIONS.includes(extension);
-
-
-  if (!validType && !validExtension) {
-
-    return {
-      valid: false,
-      error: "Formato da capa inválido. Use JPG ou PNG."
-    };
-  }
-
-
-  if (file.size > MAX_COVER_SIZE) {
-
-    return {
-      valid: false,
-      error:
-        `A capa é muito grande. ` +
-        `Limite: ${formatBytes(MAX_COVER_SIZE)}.`
-    };
-  }
-
-
-  return {
-    valid: true
-  };
-}
-
-
-/* =========================================================
-   VISUALIZAÇÃO DOS ARQUIVOS
-   ========================================================= */
-
-function updateAudioInfo(file) {
-
-  const element = $("#audioName");
-
-  if (!element) return;
-
-
-  if (!file) {
-
-    element.textContent =
-      "WAV/FLAC recomendado";
+    container.innerHTML =
+      `<div class="empty">
+        Nenhuma plataforma disponível.
+      </div>`;
 
     return;
   }
 
 
-  const validation =
-    validateAudio(file);
+  container.innerHTML =
+    availablePlatforms
+      .map(platform => {
+
+        const id =
+          String(platform.id);
 
 
-  if (!validation.valid) {
-
-    element.textContent =
-      validation.error;
-
-    element.classList.add("error");
-
-    return;
-  }
+        const name =
+          platform.nome ||
+          platform.name ||
+          "Plataforma";
 
 
-  element.classList.remove("error");
+        const slug =
+          platform.slug ||
+          "";
 
-  element.textContent =
-    `${file.name} · ${formatBytes(file.size)}`;
+
+        const logo =
+          platform.logo_url ||
+          "";
+
+
+        return `
+          <label class="platform-card">
+
+            <input
+              type="checkbox"
+              name="platform_ids"
+              value="${escapeHtml(id)}"
+              data-slug="${escapeHtml(slug)}"
+            >
+
+            <span class="platform-content">
+
+              ${
+                logo
+                  ? `
+                    <img
+                      src="${escapeHtml(logo)}"
+                      alt="${escapeHtml(name)}"
+                      class="platform-logo"
+                      loading="lazy"
+                    >
+                  `
+                  : `
+                    <span class="platform-icon">
+                      🎵
+                    </span>
+                  `
+              }
+
+              <span class="platform-name">
+                ${escapeHtml(name)}
+              </span>
+
+            </span>
+
+          </label>
+        `;
+
+      })
+      .join("");
 }
 
 
-function updateCoverInfo(file) {
+function getSelectedPlatformIds() {
 
-  const element = $("#coverName");
-
-  if (!element) return;
-
-
-  if (!file) {
-
-    element.textContent =
-      "JPG/PNG";
-
-    return;
-  }
-
-
-  const validation =
-    validateCover(file);
-
-
-  if (!validation.valid) {
-
-    element.textContent =
-      validation.error;
-
-    element.classList.add("error");
-
-    return;
-  }
-
-
-  element.classList.remove("error");
-
-  element.textContent =
-    `${file.name} · ${formatBytes(file.size)}`;
+  return Array.from(
+    document.querySelectorAll(
+      'input[name="platform_ids"]:checked'
+    )
+  ).map(
+    input => input.value
+  );
 }
 
 
 /* =========================================================
-   ARTISTA
-   ========================================================= */
-
-function getArtistName(formData) {
-
-  const artist =
-    formData.get("artist");
-
-  return String(artist || "").trim();
-}
-
-
-/* =========================================================
-   PAYLOAD DO LANÇAMENTO
+   PAYLOAD
    ========================================================= */
 
 function buildReleasePayload(formData) {
 
   const title =
-    String(formData.get("title") || "").trim();
+    String(
+      formData.get("title") || ""
+    ).trim();
+
 
   const artist =
-    String(formData.get("artist") || "").trim();
+    String(
+      formData.get("artist") || ""
+    ).trim();
+
 
   const description =
-    String(formData.get("description") || "").trim();
+    String(
+      formData.get("description") || ""
+    ).trim();
+
 
   const contentType =
-    String(formData.get("content_type") || "Single");
+    String(
+      formData.get("content_type") ||
+      "Single"
+    );
+
 
   const genre =
-    String(formData.get("genre") || "").trim();
+    String(
+      formData.get("genre") || ""
+    ).trim();
+
 
   const releaseDate =
-    String(formData.get("release_date") || "").trim();
+    String(
+      formData.get("release_date") || ""
+    ).trim();
+
 
   const catalog =
-    String(formData.get("catalog") || "").trim();
+    String(
+      formData.get("catalog") || ""
+    ).trim();
+
+
+  const platformIds =
+    getSelectedPlatformIds();
 
 
   return {
@@ -480,173 +363,300 @@ function buildReleasePayload(formData) {
       }
     ],
 
-    descriptions: description
-      ? [
-          {
-            iso_code: "pt-BR",
-            text: description
-          }
-        ]
-      : [],
+    descriptions:
+      description
+        ? [
+            {
+              iso_code: "pt-BR",
+              text: description
+            }
+          ]
+        : [],
 
-    content_type: contentType,
+    content_type:
+      contentType,
 
-    catalog_number: catalog,
+    catalog_number:
+      catalog,
 
-    original_release_date: releaseDate,
+    original_release_date:
+      releaseDate,
 
-    primary_genre: genre,
+    primary_genre:
+      genre,
 
     explicit:
-      Boolean($("#explicit")?.checked),
+      Boolean(
+        $("#explicit")?.checked
+      ),
 
     ai_disclosure:
-      Boolean($("#aiDisclosure")?.checked),
+      Boolean(
+        $("#aiDisclosure")?.checked
+      ),
 
-    /*
-     * Artista principal.
-     *
-     * O backend poderá transformar esse nome
-     * em artist_id posteriormente.
-     */
+    artist_name:
+      artist,
 
-    artist_name: artist
+    platform_ids:
+      platformIds
   };
 }
 
 
 /* =========================================================
-   CRIAR LANÇAMENTO
+   ARQUIVOS
    ========================================================= */
 
-async function createRelease() {
+function setupFileInputs() {
 
-  const form = $("#releaseForm");
+  const audio =
+    $("#audio");
 
-  if (!form) return;
+
+  const cover =
+    $("#cover");
+
+
+  if (audio) {
+
+    audio.addEventListener(
+      "change",
+      event => {
+
+        const file =
+          event.target.files?.[0];
+
+
+        const name =
+          $("#audioName");
+
+
+        if (!name) return;
+
+
+        name.textContent =
+          file
+            ? `${file.name} • ${formatFileSize(file.size)}`
+            : "WAV/FLAC recomendado";
+      }
+    );
+  }
+
+
+  if (cover) {
+
+    cover.addEventListener(
+      "change",
+      event => {
+
+        const file =
+          event.target.files?.[0];
+
+
+        const name =
+          $("#coverName");
+
+
+        if (!name) return;
+
+
+        name.textContent =
+          file
+            ? `${file.name} • ${formatFileSize(file.size)}`
+            : "JPG/PNG";
+      }
+    );
+  }
+}
+
+
+function formatFileSize(bytes) {
+
+  if (!bytes) return "0 KB";
+
+
+  const mb =
+    bytes / 1024 / 1024;
+
+
+  if (mb >= 1) {
+
+    return `${mb.toFixed(2)} MB`;
+
+  }
+
+
+  return `${Math.ceil(bytes / 1024)} KB`;
+}
+
+
+/* =========================================================
+   VALIDAÇÃO
+   ========================================================= */
+
+function validateRelease(formData) {
+
+  const title =
+    String(
+      formData.get("title") || ""
+    ).trim();
+
+
+  const artist =
+    String(
+      formData.get("artist") || ""
+    ).trim();
+
+
+  const genre =
+    String(
+      formData.get("genre") || ""
+    ).trim();
+
+
+  const date =
+    String(
+      formData.get("release_date") || ""
+    ).trim();
+
+
+  const audio =
+    $("#audio")?.files?.[0];
+
+
+  const cover =
+    $("#cover")?.files?.[0];
+
+
+  const platforms =
+    getSelectedPlatformIds();
+
+
+  if (!title) {
+
+    return "Informe o título da música.";
+  }
+
+
+  if (!artist) {
+
+    return "Informe o artista principal.";
+  }
+
+
+  if (!genre) {
+
+    return "Informe o gênero musical.";
+  }
+
+
+  if (!date) {
+
+    return "Informe a data de lançamento.";
+  }
+
+
+  if (!audio) {
+
+    return "Selecione o arquivo de áudio.";
+  }
+
+
+  if (!cover) {
+
+    return "Selecione a capa do lançamento.";
+  }
+
+
+  if (!platforms.length) {
+
+    return "Selecione pelo menos uma plataforma de distribuição.";
+  }
+
+
+  const audioExtension =
+    audio.name
+      .toLowerCase()
+      .split(".")
+      .pop();
+
+
+  const validAudio =
+    ["wav", "flac", "mp3"];
+
+
+  if (!validAudio.includes(audioExtension)) {
+
+    return "O áudio deve estar em WAV, FLAC ou MP3.";
+  }
+
+
+  const coverExtension =
+    cover.name
+      .toLowerCase()
+      .split(".")
+      .pop();
+
+
+  const validCover =
+    ["jpg", "jpeg", "png"];
+
+
+  if (!validCover.includes(coverExtension)) {
+
+    return "A capa deve estar em JPG ou PNG.";
+  }
+
+
+  return null;
+}
+
+
+/* =========================================================
+   CRIAÇÃO DO LANÇAMENTO
+   ========================================================= */
+
+async function createRelease(form) {
+
+  const message =
+    $("#formMessage");
 
 
   const formData =
     new FormData(form);
 
 
-  const audio =
-    $("#audio")?.files?.[0] || null;
-
-  const cover =
-    $("#cover")?.files?.[0] || null;
+  const validationError =
+    validateRelease(formData);
 
 
-  /* -----------------------------------------
-     VALIDA CAMPOS
-     ----------------------------------------- */
-
-  const title =
-    String(formData.get("title") || "").trim();
-
-  const artist =
-    getArtistName(formData);
-
-  const genre =
-    String(formData.get("genre") || "").trim();
-
-  const releaseDate =
-    String(formData.get("release_date") || "").trim();
-
-
-  if (!title) {
+  if (validationError) {
 
     setMessage(
-      "Informe o título da música.",
+      validationError,
       "error"
     );
 
     return;
   }
 
-
-  if (!artist) {
-
-    setMessage(
-      "Informe o artista principal.",
-      "error"
-    );
-
-    return;
-  }
-
-
-  if (!genre) {
-
-    setMessage(
-      "Informe o gênero musical.",
-      "error"
-    );
-
-    return;
-  }
-
-
-  if (!releaseDate) {
-
-    setMessage(
-      "Informe a data de lançamento.",
-      "error"
-    );
-
-    return;
-  }
-
-
-  /* -----------------------------------------
-     VALIDA ÁUDIO
-     ----------------------------------------- */
-
-  const audioValidation =
-    validateAudio(audio);
-
-
-  if (!audioValidation.valid) {
-
-    setMessage(
-      audioValidation.error,
-      "error"
-    );
-
-    return;
-  }
-
-
-  /* -----------------------------------------
-     VALIDA CAPA
-     ----------------------------------------- */
-
-  const coverValidation =
-    validateCover(cover);
-
-
-  if (!coverValidation.valid) {
-
-    setMessage(
-      coverValidation.error,
-      "error"
-    );
-
-    return;
-  }
-
-
-  /* -----------------------------------------
-     MONTA PAYLOAD
-     ----------------------------------------- */
 
   const payload =
     buildReleasePayload(formData);
 
 
+  const audio =
+    $("#audio").files[0];
+
+
+  const cover =
+    $("#cover").files[0];
+
+
   /*
-   * O backend receberá os dados e os arquivos
-   * como multipart/form-data.
+   * O backend recebe os metadados
+   * como JSON dentro de "release".
    */
 
   const uploadData =
@@ -660,26 +670,22 @@ async function createRelease() {
 
 
   uploadData.append(
-    "artist_name",
-    artist
-  );
-
-
-  uploadData.append(
     "audio",
-    audio
+    audio,
+    audio.name
   );
 
 
   uploadData.append(
     "cover",
-    cover
+    cover,
+    cover.name
   );
 
 
-  /* -----------------------------------------
-     ENVIA
-     ----------------------------------------- */
+  /*
+   * Estado visual
+   */
 
   const submitButton =
     form.querySelector(
@@ -687,21 +693,25 @@ async function createRelease() {
     );
 
 
-  setButtonLoading(
-    submitButton,
-    true,
-    "Enviando lançamento..."
-  );
+  if (submitButton) {
+
+    submitButton.disabled =
+      true;
+
+    submitButton.textContent =
+      "Criando lançamento...";
+  }
 
 
   setMessage(
-    "Enviando lançamento..."
+    "Enviando música, capa e informações...",
+    ""
   );
 
 
   try {
 
-    const created =
+    const result =
       await api(
         "/api/releases",
         {
@@ -712,17 +722,45 @@ async function createRelease() {
 
 
     const releaseId =
-      created.id ||
-      created.public_id ||
-      created.release?.id ||
-      created.release?.public_id ||
+      result.id ||
+      result.public_id ||
+      result.release?.id ||
       "OK";
 
 
     setMessage(
-      `Lançamento criado com sucesso. ID: ${releaseId}`,
+      `Lançamento criado com sucesso! ID: ${releaseId}`,
       "success"
     );
+
+
+    /*
+     * Limpa formulário.
+     */
+
+    form.reset();
+
+
+    const audioName =
+      $("#audioName");
+
+
+    const coverName =
+      $("#coverName");
+
+
+    if (audioName) {
+
+      audioName.textContent =
+        "WAV/FLAC recomendado";
+    }
+
+
+    if (coverName) {
+
+      coverName.textContent =
+        "JPG/PNG";
+    }
 
 
     /*
@@ -732,28 +770,10 @@ async function createRelease() {
     await loadReleases();
 
 
-    /*
-     * Limpa formulário depois do sucesso.
-     */
-
-    form.reset();
-
-
-    /*
-     * Mantém a data atual depois do reset.
-     */
-
-    setDefaultReleaseDate();
-
-
-    updateAudioInfo(null);
-    updateCoverInfo(null);
-
-
   } catch (error) {
 
     console.error(
-      "Erro ao criar lançamento:",
+      "Create release:",
       error
     );
 
@@ -767,10 +787,14 @@ async function createRelease() {
 
   } finally {
 
-    setButtonLoading(
-      submitButton,
-      false
-    );
+    if (submitButton) {
+
+      submitButton.disabled =
+        false;
+
+      submitButton.textContent =
+        "Criar lançamento";
+    }
   }
 }
 
@@ -784,23 +808,13 @@ function renderReleases(data) {
   const list =
     $("#releases");
 
-
   if (!list) return;
 
 
-  /*
-   * Compatibilidade com diferentes formatos
-   * de resposta da API.
-   */
-
   const items =
-    Array.isArray(data)
-      ? data
-      : Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.releases)
-          ? data.releases
-          : [];
+    Array.isArray(data?.data)
+      ? data.data
+      : [];
 
 
   if (!items.length) {
@@ -813,87 +827,80 @@ function renderReleases(data) {
 
 
   list.innerHTML =
-    items.map((release) => {
+    items
+      .map(release => {
 
-      const title =
-        release.titles?.[0]?.text ||
-        release.title ||
-        release.name ||
-        "Sem título";
-
-
-      const artist =
-        release.artists?.name ||
-        release.artists?.[0]?.name ||
-        release.artist_name ||
-        release.artist ||
-        "Artista";
+        const title =
+          release.titles?.[0]?.text ||
+          release.title ||
+          "Sem título";
 
 
-      const id =
-        release.public_id ||
-        release.id ||
-        "—";
+        let artist =
+          release.artists?.name ||
+          release.artists?.[0]?.name ||
+          release.artist_name ||
+          release.artist?.nome ||
+          "Artista";
 
 
-      const status =
-        release.status ||
-        release.distribution_status ||
-        "CATÁLOGO";
+        if (
+          typeof artist === "object"
+        ) {
+
+          artist =
+            artist.nome ||
+            artist.name ||
+            "Artista";
+        }
 
 
-      const date =
-        release.original_release_date ||
-        release.release_date ||
-        "";
+        const id =
+          release.public_id ||
+          release.id ||
+          "";
 
 
-      return `
-        <article class="release">
+        const status =
+          release.status ||
+          "CATÁLOGO";
 
-          <div class="release-info">
 
-            <h3>
-              ${escapeHtml(title)}
-            </h3>
+        return `
+          <div class="release">
 
-            <p>
-              ${escapeHtml(String(artist))}
-              · ID
-              ${escapeHtml(String(id))}
-            </p>
+            <div>
 
-            ${
-              date
-                ? `<small>
-                    Lançamento:
-                    ${escapeHtml(formatDate(date))}
-                   </small>`
-                : ""
-            }
+              <h3>
+                ${escapeHtml(title)}
+              </h3>
+
+              <p>
+                ${escapeHtml(String(artist))}
+                · ID
+                ${escapeHtml(String(id))}
+              </p>
+
+            </div>
+
+            <span class="status">
+              ${escapeHtml(
+                String(status).toUpperCase()
+              )}
+            </span>
 
           </div>
+        `;
 
-          <span class="status">
-            ${escapeHtml(String(status))}
-          </span>
-
-        </article>
-      `;
-
-    }).join("");
+      })
+      .join("");
 }
 
-
-/* =========================================================
-   CARREGAR LANÇAMENTOS
-   ========================================================= */
 
 async function loadReleases() {
 
   const list =
     $("#releases");
-
 
   if (!list) return;
 
@@ -916,15 +923,18 @@ async function loadReleases() {
   } catch (error) {
 
     console.error(
-      "Erro ao carregar lançamentos:",
+      "Releases:",
       error
     );
 
 
     list.innerHTML =
       `<div class="empty">
-        ${escapeHtml(error.message)}
-       </div>`;
+        ${escapeHtml(
+          error.message ||
+          "Erro ao carregar lançamentos."
+        )}
+      </div>`;
   }
 }
 
@@ -933,104 +943,34 @@ async function loadReleases() {
    DATA PADRÃO
    ========================================================= */
 
-function setDefaultReleaseDate() {
+function setupDefaultDate() {
 
-  const input =
-    $('input[name="release_date"]');
-
-
-  if (!input) return;
-
-
-  const today =
-    new Date();
-
-
-  /*
-   * Ajusta para o horário local,
-   * evitando problemas de UTC.
-   */
-
-  const year =
-    today.getFullYear();
-
-
-  const month =
-    String(
-      today.getMonth() + 1
-    ).padStart(2, "0");
-
-
-  const day =
-    String(
-      today.getDate()
-    ).padStart(2, "0");
-
-
-  input.value =
-    `${year}-${month}-${day}`;
-}
-
-
-/* =========================================================
-   ANO DO RODAPÉ
-   ========================================================= */
-
-function setCurrentYear() {
-
-  const year =
-    $("#year");
-
-
-  if (!year) return;
-
-
-  year.textContent =
-    new Date().getFullYear();
-}
-
-
-/* =========================================================
-   EVENTOS DOS ARQUIVOS
-   ========================================================= */
-
-function setupFileInputs() {
-
-  const audio =
-    $("#audio");
-
-
-  if (audio) {
-
-    audio.addEventListener(
-      "change",
-      (event) => {
-
-        const file =
-          event.target.files?.[0] || null;
-
-        updateAudioInfo(file);
-      }
+  const dateInput =
+    document.querySelector(
+      'input[name="release_date"]'
     );
-  }
 
 
-  const cover =
-    $("#cover");
+  if (!dateInput) return;
 
 
-  if (cover) {
+  if (!dateInput.value) {
 
-    cover.addEventListener(
-      "change",
-      (event) => {
+    const now =
+      new Date();
 
-        const file =
-          event.target.files?.[0] || null;
 
-        updateCoverInfo(file);
-      }
-    );
+    const localDate =
+      new Date(
+        now.getTime() -
+        now.getTimezoneOffset() * 60000
+      )
+        .toISOString()
+        .slice(0, 10);
+
+
+    dateInput.value =
+      localDate;
   }
 }
 
@@ -1044,17 +984,16 @@ function setupForm() {
   const form =
     $("#releaseForm");
 
-
   if (!form) return;
 
 
   form.addEventListener(
     "submit",
-    async (event) => {
+    async event => {
 
       event.preventDefault();
 
-      await createRelease();
+      await createRelease(form);
     }
   );
 }
@@ -1069,7 +1008,6 @@ function setupRefresh() {
   const button =
     $("#refresh");
 
-
   if (!button) return;
 
 
@@ -1077,10 +1015,8 @@ function setupRefresh() {
     "click",
     async () => {
 
-      button.disabled = true;
-
-      const originalText =
-        button.textContent;
+      button.disabled =
+        true;
 
       button.textContent =
         "Atualizando...";
@@ -1088,14 +1024,19 @@ function setupRefresh() {
 
       try {
 
-        await loadReleases();
+        await Promise.all([
+          loadReleases(),
+          loadPlatforms(),
+          health()
+        ]);
 
       } finally {
 
-        button.disabled = false;
+        button.disabled =
+          false;
 
         button.textContent =
-          originalText;
+          "Atualizar";
       }
     }
   );
@@ -1103,78 +1044,19 @@ function setupRefresh() {
 
 
 /* =========================================================
-   NAVEGAÇÃO SUAVE
+   ANO
    ========================================================= */
 
-function setupSmoothNavigation() {
+function setupYear() {
 
-  $$('a[href^="#"]').forEach(
-    (link) => {
+  const year =
+    $("#year");
 
-      link.addEventListener(
-        "click",
-        (event) => {
-
-          const targetId =
-            link.getAttribute("href");
+  if (!year) return;
 
 
-          if (!targetId ||
-              targetId === "#") {
-
-            return;
-          }
-
-
-          const target =
-            document.querySelector(
-              targetId
-            );
-
-
-          if (!target) return;
-
-
-          event.preventDefault();
-
-
-          target.scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-          });
-        }
-      );
-    }
-  );
-}
-
-
-/* =========================================================
-   PREVENÇÃO DE ENVIO DUPLO
-   ========================================================= */
-
-function preventDoubleSubmit() {
-
-  const form =
-    $("#releaseForm");
-
-
-  if (!form) return;
-
-
-  form.addEventListener(
-    "keydown",
-    (event) => {
-
-      if (
-        event.key === "Enter" &&
-        event.target.tagName !== "TEXTAREA"
-      ) {
-
-        event.preventDefault();
-      }
-    }
-  );
+  year.textContent =
+    new Date().getFullYear();
 }
 
 
@@ -1184,14 +1066,9 @@ function preventDoubleSubmit() {
 
 async function init() {
 
-  console.log(
-    "🎵 Gonçalves Music V1 iniciando..."
-  );
+  setupYear();
 
-
-  setCurrentYear();
-
-  setDefaultReleaseDate();
+  setupDefaultDate();
 
   setupFileInputs();
 
@@ -1199,24 +1076,21 @@ async function init() {
 
   setupRefresh();
 
-  setupSmoothNavigation();
-
-  preventDoubleSubmit();
-
 
   /*
-   * Executa em paralelo.
+   * Carrega tudo ao abrir a página.
    */
 
   await Promise.allSettled([
+
     health(),
+
+    loadPlatforms(),
+
     loadReleases()
+
   ]);
 
-
-  console.log(
-    "🎵 Gonçalves Music V1 pronta."
-  );
 }
 
 
@@ -1236,144 +1110,5 @@ if (
 } else {
 
   init();
-}
-/* =========================================================
-   PLATAFORMAS
-   ========================================================= */
 
-let availablePlatforms = [];
-
-
-/**
- * Carrega as plataformas ativas da API.
- */
-async function loadPlatforms() {
-
-  const container = $("#platforms");
-
-  if (!container) return;
-
-  container.innerHTML =
-    '<div class="empty">Carregando plataformas...</div>';
-
-  try {
-
-    const response =
-      await api("/api/platforms");
-
-    availablePlatforms =
-      Array.isArray(response?.data)
-        ? response.data
-        : [];
-
-    renderPlatforms();
-
-  } catch (error) {
-
-    console.error(
-      "Erro ao carregar plataformas:",
-      error
-    );
-
-    container.innerHTML =
-      `<div class="empty">
-        ${escapeHtml(
-          error.message ||
-          "Não foi possível carregar as plataformas."
-        )}
-      </div>`;
-  }
-}
-
-
-/**
- * Mostra as plataformas na tela.
- */
-function renderPlatforms() {
-
-  const container =
-    $("#platforms");
-
-  if (!container) return;
-
-
-  if (!availablePlatforms.length) {
-
-    container.innerHTML =
-      '<div class="empty">Nenhuma plataforma disponível.</div>';
-
-    return;
-  }
-
-
-  container.innerHTML =
-    availablePlatforms.map(platform => {
-
-      const id =
-        String(platform.id);
-
-      const name =
-        platform.nome ||
-        platform.name ||
-        "Plataforma";
-
-      const slug =
-        platform.slug ||
-        "";
-
-
-      return `
-        <label class="platform-card">
-
-          <input
-            type="checkbox"
-            name="platform_ids"
-            value="${escapeHtml(id)}"
-            data-slug="${escapeHtml(slug)}"
-          >
-
-          <span class="platform-content">
-
-            ${
-              platform.logo_url
-                ? `
-                  <img
-                    src="${escapeHtml(platform.logo_url)}"
-                    alt="${escapeHtml(name)}"
-                    class="platform-logo"
-                    loading="lazy"
-                  >
-                `
-                : `
-                  <span class="platform-icon">
-                    🎵
-                  </span>
-                `
-            }
-
-            <span class="platform-name">
-              ${escapeHtml(name)}
-            </span>
-
-          </span>
-
-        </label>
-      `;
-
-    }).join("");
-}
-
-
-/**
- * Retorna os IDs das plataformas selecionadas.
- */
-function getSelectedPlatformIds() {
-
-  return Array.from(
-    document.querySelectorAll(
-      'input[name="platform_ids"]:checked'
-    )
-  ).map(
-    input => input.value
-  );
 }
